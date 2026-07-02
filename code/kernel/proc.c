@@ -124,6 +124,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->priority = 10; // valor inicial da prioridade;
 
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0) {
@@ -422,45 +423,54 @@ kwait(uint64 addr)
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
 void
-scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
-
-  c->proc = 0;
-  for (;;) {
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting. Then turn them back off
-    // to avoid a possible race between an interrupt
-    // and wfi.
-    intr_on();
-    intr_off();
-
-    int found = 0;
-    for (p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if (p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
-      }
-      release(&p->lock);
-    }
-    if (found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
-      asm volatile("wfi");
-    }
-  }
-}
+ scheduler(void)
+ {
+   struct proc *p;
+   struct cpu *c = mycpu();
+   c->proc = 0;
+ 
+   for (;;) {
+     intr_on();
+     intr_off();
+ 
+     int found = 0;
+     int priority = 10;
+     struct proc *pmenor = 0;
+ 
+     // 1a passada: escolhe o processo de menor prioridade numérica
+     for (p = proc; p < &proc[NPROC]; p++) {
+       acquire(&p->lock);
+       if (p->state == RUNNABLE && p->priority <= priority) {
+         priority = p->priority;
+         pmenor = p;
+         found = 1;
+       }
+       release(&p->lock);
+     }
+ 
+     // 2a passada: aging - quem não foi escolhido ganha prioridade
+     for (p = proc; p < &proc[NPROC]; p++) {
+       acquire(&p->lock);
+       if (p->state == RUNNABLE && p != pmenor && p->priority != 0) {
+         p->priority--;
+       }
+       release(&p->lock);
+     }
+ 
+     if (found) {
+       acquire(&pmenor->lock);
+       if (pmenor->state == RUNNABLE) {
+         pmenor->state = RUNNING;
+         c->proc = pmenor;
+         swtch(&c->context, &pmenor->context);
+         c->proc = 0;
+       }
+       release(&pmenor->lock);
+     } else {
+       asm volatile("wfi");
+     }
+   }
+ }
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -689,4 +699,19 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+int getpriority(int pid){
+	struct proc *p;
+	int prio = -1;
+	for(p = proc; p < &proc[NPROC]; p++){
+		acquire(&p->lock);
+		if(p->pid == pid){
+			prio = p->priority;
+			release(&p->lock);
+			return prio;
+		}
+		release(&p->lock);
+	}
+	return -1; // se falhar retorna -1;
 }

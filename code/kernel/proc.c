@@ -415,63 +415,103 @@ kwait(uint64 addr)
   }
 }
 
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
-void
- scheduler(void)
- {
-   struct proc *p;
-   struct cpu *c = mycpu();
-   c->proc = 0;
- 
-   for (;;) {
-     intr_on();
-     intr_off();
- 
-     int found = 0;
-     int priority = 10;
-     struct proc *pmenor = 0;
- 
-     // 1a passada: escolhe o processo de menor prioridade numérica
-     for (p = proc; p < &proc[NPROC]; p++) {
-       acquire(&p->lock);
-       if (p->state == RUNNABLE && p->priority <= priority) {
-         priority = p->priority;
-         pmenor = p;
-         found = 1;
-       }
-       release(&p->lock);
-     }
- 
-     // 2a passada: aging - quem não foi escolhido ganha prioridade
-     for (p = proc; p < &proc[NPROC]; p++) {
-       acquire(&p->lock);
-       if (p->state == RUNNABLE && p != pmenor && p->priority != 0) {
-         p->priority--;
-       }
-       release(&p->lock);
-     }
- 
-     if (found) {
-       acquire(&pmenor->lock);
-       if (pmenor->state == RUNNABLE) {
-         pmenor->state = RUNNING;
-         c->proc = pmenor;
-         swtch(&c->context, &pmenor->context);
-         c->proc = 0;
-       }
-       release(&pmenor->lock);
-     } else {
-       asm volatile("wfi");
-     }
-   }
- }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+
+
+
+
+int 
+getpriority(int pid)
+{
+  struct proc *p;
+
+  // Percorre a tabela de processos do xv6
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->pid == pid){
+      int priority = p->priority; // Substitua pelo nome do seu campo de prioridade
+      release(&p->lock);
+      return priority;
+    }
+    release(&p->lock);
+  }
+  
+  return -1; // Processo não encontrado
+}
+
+void
+update_aging(void)
+{
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      p->ciclocpu++;
+      // Se esperou muito (ex: 20 ciclos) e não está na prioridade máxima (0)
+      if(p->ciclocpu >= 20 && p->priority > 0) {
+        p->priority--;         // Aumenta a prioridade (reduz o valor numérico)
+        p->ciclocpu = 0;          // Reseta o contador para o próximo ciclo
+      }
+    } else {
+      p->ciclocpu = 0;            // Se rodou ou dormiu, o contador zera
+    }
+    release(&p->lock);
+  }
+}
+
+void
+scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;){
+    // Ativa as interrupções nesta CPU
+    intr_on();
+
+    struct proc *highest_p = 0;
+    int highest_priority = 11; // Inicializa com valor pior que o limite (10)
+
+    // Primeira passagem: Encontrar o processo RUNNABLE com maior prioridade (menor número)
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        if(p->priority < highest_priority) {
+          if(highest_p)
+            release(&highest_p->lock); // Libera o anterior escolhido
+          highest_priority = p->priority;
+          highest_p = p;
+          continue; // Mantém o lock deste novo candidato
+        }
+      }
+      release(&p->lock);
+    }
+
+    // Segunda passagem: Se encontrou um processo candidato, executa-o
+    if(highest_p != 0) {
+      highest_p->state = RUNNING;
+      c->proc = highest_p;
+      
+      swtch(&c->context, &highest_p->context);
+
+      // O processo terminou seu turno de execução
+      c->proc = 0;
+      release(&highest_p->lock);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this

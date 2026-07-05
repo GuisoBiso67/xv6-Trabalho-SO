@@ -92,10 +92,7 @@ void            setkilled(struct proc*);
 struct cpu*     mycpu(void);
 struct proc*    myproc();
 void            procinit(void);
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-int             getpriority(int pid);            //declaracao da funcao getpriority
-void            update_aging(void);              //declaracao da funcao de atualizar a prioridade com aging
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void            update_aging(void);          // declaracao da funcao de atualizar a prioridade com aging
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
 void            sleep(void*, struct spinlock*);
@@ -106,7 +103,7 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
-int             getpriority(int);
+int             getpriority(int); // getpriority
 
 // swtch.S
 void            swtch(struct context*, struct context*);

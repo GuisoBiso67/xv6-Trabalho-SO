@@ -1,58 +1,97 @@
+// user/agingtest.c
 #include "kernel/types.h"
 #include "kernel/stat.h"
 #include "user/user.h"
 
-#define NUM_CHILDREN 4
-#define BUSY_ITERS   50000000   // ajuste conforme velocidade do seu QEMU
-#define PRINT_EVERY  5000000    // a cada quantas iterações imprime status
+#define NUM_CHILDREN 8
+#define BASE_ITERS   20000000
+
+int
+itoa(int n, char *buf)
+{
+  char tmp[16];
+  int i = 0, j = 0;
+  int neg = n < 0;
+  if (neg) n = -n;
+
+  if (n == 0) tmp[i++] = '0';
+  while (n > 0) {
+    tmp[i++] = '0' + (n % 10);
+    n /= 10;
+  }
+  if (neg) tmp[i++] = '-';
+
+  while (i > 0) buf[j++] = tmp[--i];
+  return j;
+}
+
+int
+strcopy(char *dst, const char *src)
+{
+  int i = 0;
+  while (src[i]) {
+    dst[i] = src[i];
+    i++;
+  }
+  return i;
+}
 
 void
-busy_work(int initial_priority)
+print_result(int idx, int start, int end, int prio)
 {
-  int last_uptime = -1;
+  char buf[128];
+  int len = 0;
 
-  for (int i = 0; i < BUSY_ITERS; i++) {
-    if (i % PRINT_EVERY == 0) {
-      int now = uptime();
-      if (now != last_uptime) {
-        int prio = getpriority(getpid());
-        printf("pid=%d prioridade_inicial=%d prioridade_atual=%d tick=%d iter=%d\n",
-               getpid(), initial_priority, prio, now, i);
-        last_uptime = now;
-      }
-    }
-  }
+  len += strcopy(buf + len, "filho[");
+  len += itoa(idx, buf + len);
+  len += strcopy(buf + len, "] pid=");
+  len += itoa(getpid(), buf + len);
+  len += strcopy(buf + len, " start=");
+  len += itoa(start, buf + len);
+  len += strcopy(buf + len, " end=");
+  len += itoa(end, buf + len);
+  len += strcopy(buf + len, " duracao=");
+  len += itoa(end - start, buf + len);
+  len += strcopy(buf + len, " prioridade_final=");
+  len += itoa(prio, buf + len);
+  len += strcopy(buf + len, "\n");
+
+  write(1, buf, len);
+}
+
+void
+busy_work(int idx, long iters)
+{
+	int start = uptime();
+
+	volatile long dummy = 0;
+	for(long i = 0; i < iters; i++){
+		dummy += 1;
+	}
+
+	int end = uptime();
+	int prio = getpriority(getpid());
+	print_result(idx, start, end, prio);
 }
 
 int
 main(void)
 {
-  //int priorities[NUM_CHILDREN] = {0, 3, 6, 9}; // menor = mais prioritário
-  int pids[NUM_CHILDREN];
-
-  printf("=== iniciando teste de aging com %d processos ===\n", NUM_CHILDREN);
+  write(1, "=== iniciando teste de aging com 8 processos ===\n", 50);
 
   for (int i = 0; i < NUM_CHILDREN; i++) {
     int pid = fork();
-
     if (pid == 0) {
-      // processo filho
-      busy_work(10);
+      long work = (i%2 == 0) ? BASE_ITERS * 2 : BASE_ITERS;
+      busy_work(i, work);
       exit(0);
-    } else {
-      pids[i] = pid;
     }
   }
 
-  // pai espera todos os filhos terminarem
   for (int i = 0; i < NUM_CHILDREN; i++) {
     wait(0);
   }
 
-  printf("=== teste finalizado. PIDs criados:  ===\n");
-  for(int i=0; i< NUM_CHILDREN; i++){
-  	printf("%d ", pids[i]);
-  }
-  printf("===\n");
+  write(1, "=== teste finalizado ===\n", 26);
   exit(0);
 }

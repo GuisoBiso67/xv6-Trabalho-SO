@@ -125,6 +125,7 @@ found:
   p->pid = allocpid();
   p->state = USED;
   p->priority = 10; // valor inicial da prioridade;
+  p->ciclocpu = 0;
 
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0) {
@@ -416,29 +417,19 @@ kwait(uint64 addr)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-int 
-getpriority(int pid)
-{
-  struct proc *p;
-
-  // Percorre a tabela de processos do xv6
-  for(p = proc; p < &proc[NPROC]; p++){
-    acquire(&p->lock);
-    if(p->pid == pid){
-      int priority = p->priority; // Substitua pelo nome do seu campo de prioridade
-      release(&p->lock);
-      return priority;
-    }
-    release(&p->lock);
-  }
-  
-  return -1; // Processo não encontrado
+int getpriority(int pid){
+	struct proc *p;
+	int prio = -1;
+	for(p = proc; p < &proc[NPROC]; p++){
+		acquire(&p->lock);
+		if(p->pid == pid){
+			prio = p->priority;
+			release(&p->lock);
+			return prio;
+		}
+		release(&p->lock);
+	}
+	return -1; // se falhar retorna -1;
 }
 
 void
@@ -472,6 +463,8 @@ scheduler(void)
     // Ativa as interrupções nesta CPU
     intr_on();
 
+    update_aging();
+
     struct proc *highest_p = 0;
     int highest_priority = 11; // Inicializa com valor pior que o limite (10)
 
@@ -492,26 +485,23 @@ scheduler(void)
 
     // Segunda passagem: Se encontrou um processo candidato, executa-o
     if(highest_p != 0) {
-      highest_p->state = RUNNING;
-      c->proc = highest_p;
-      
-      swtch(&c->context, &highest_p->context);
+	     highest_p->state = RUNNING;
+	     c->proc = highest_p;
+	     
+	     swtch(&c->context, &highest_p->context);
 
-      // O processo terminou seu turno de execução
-      c->proc = 0;
-      release(&highest_p->lock);
+	     // O processo terminou seu turno de execução
+	     c->proc = 0;
+	     release(&highest_p->lock);
+    }else{
+    	intr_off();
+    	asm volatile("wfi");
     }
   }
 }
 
-
-
-
-
-
-
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -739,19 +729,4 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
-}
-
-int getpriority(int pid){
-	struct proc *p;
-	int prio = -1;
-	for(p = proc; p < &proc[NPROC]; p++){
-		acquire(&p->lock);
-		if(p->pid == pid){
-			prio = p->priority;
-			release(&p->lock);
-			return prio;
-		}
-		release(&p->lock);
-	}
-	return -1; // se falhar retorna -1;
 }

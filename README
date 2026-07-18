@@ -8,5 +8,5 @@ Pedro Paulo Veri Marquez - 12421BCC072
 
 ---------------------------------------
 
-Etapa 1: Video explicando a ideia para a implementação OK
-Etapa 2:
+Etapa 1: Video explicando a ideia para a implementação OK;
+Etapa 2: Implementação efetiva do getpriority + scheduler com aging;
